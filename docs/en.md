@@ -2,26 +2,27 @@
 
 # Introduction
 
-[![Godot 4](https://img.shields.io/badge/Godot-4.X-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org/)
-[![Version](https://img.shields.io/badge/version-2.0.0-5aafff)](./plugin.cfg)
+[![Godot 4](https://img.shields.io/badge/Godot-4.4+-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org/)
+[![Version](https://img.shields.io/badge/version-2.1.0-8435c4)](./plugin.cfg)
 
-**LinkUx** is a multiplayer addon for **Godot 4** that unifies LAN and Online networking under a single high-level API. Instead of coding directly against ENet, WebSocket, or any external service, your game code only talks to LinkUx — and LinkUx handles the rest.
+**LinkUx** is a multiplayer addon for **Godot 4** that unifies LAN and Online networking under a single high-level API. Instead of coding directly against ENet, Steam, or any external service, your game code only talks to LinkUx — and LinkUx handles the rest.
 
 ## Versions & compatibility
 
 | Item | Value |
 |------|--------|
-| **Addon version** | **2.0.0** (`version` field in `addons/linkux/plugin.cfg`) |
-| **Target Godot version** | **Godot 4.x** (developed and tested from **Godot 4.2** onward) |
+| **Addon version** | **2.1.0** (`version` field in `addons/linkux/plugin.cfg`) |
+| **Target Godot version** | **Godot 4.4+** |
 | **Internal network protocol** | Integer from `LinkUx.get_protocol_version()` (see `addons/linkux/core/protocol_version.gd`) |
+| **Addon version string** | `LinkUx.get_version()` — reads from `plugin.cfg` dynamically |
 
-**Important:** every player should ship the **same addon build**. If protocol versions differ, you may see `PROTOCOL_VERSION_MISMATCH` (`NetworkEnums.ErrorCode`).
+**Important:** every player must ship the **same addon build**. If protocol versions differ, you may see `PROTOCOL_VERSION_MISMATCH` (`NetworkEnums.ErrorCode`).
 
 ## Philosophy
 
 > One public API. Multiple swappable backends.
 
-The core principle of LinkUx is **total transport abstraction**. You can switch from LAN to an Online backend without changing a single line of game code — you only change the backend configuration.
+The core principle of LinkUx is **total transport abstraction**. You can switch from LAN to Steam Online without changing a single line of gameplay code — you only change the backend.
 
 ## Layered Architecture
 
@@ -36,7 +37,7 @@ The core principle of LinkUx is **total transport abstraction**. You can switch 
 ├──────────────────────────────────────┤
 │          Transport layer             │  TransportLayer
 ├──────────────────────────────────────┤
-│          Active backend              │  LAN (ENet) / Online (coming soon)
+│          Active backend              │  LAN (ENet) / Steam Online
 └──────────────────────────────────────┘
 ```
 
@@ -44,13 +45,15 @@ The core principle of LinkUx is **total transport abstraction**. You can switch 
 
 | Backend | Status | Description |
 |---------|--------|-------------|
-| **LAN** | ✅ Available | Local network using ENet (ENetMultiplayerPeer) |
-| **Online** | 🔜 Coming soon | Relay, cloud services, global matchmaking |
+| **LAN** | ✅ Available | Local network using ENet. Room code = 8-char hex (encodes IP:port). |
+| **Steam** | ✅ Available | Online multiplayer via Steam Lobbies + SteamMultiplayerPeer. Room code = 6-char alphanumeric. Requires GodotSteam GDExtension 4.4+. |
 
 ## Key Features
 
 - **Unified API** — `create_session`, `join_session`, `close_session`, signals, RPCs: everything in the same Autoload.
-- **Editor nodes** — `LinkUxEntity`, `LinkUxSynchronizer` and `LinkUxSpawner` are configured visually in the inspector.
+- **LAN backend** — Direct local-network play with zero configuration.
+- **Steam Online backend** — Internet play via Steam Lobbies; relay, NAT traversal and encryption handled by Steam.
+- **Editor nodes** — `LinkUxEntity`, `LinkUxSynchronizer` and `LinkUxSpawner` configured visually in the inspector.
 - **Interpolated sync** — Automatic smoothing of position/rotation for remote objects.
 - **Replicated spawning** — The Spawner creates and destroys entities on all peers automatically.
 - **Late join** — Players who join late automatically receive the current world state.
@@ -60,8 +63,12 @@ The core principle of LinkUx is **total transport abstraction**. You can switch 
 
 ## Requirements
 
-- **Godot 4.2+** (keep your editor aligned with the series the addon was tested on)
-- No external runtime dependencies
+| Item | Required for | Notes |
+|------|-------------|-------|
+| **Godot 4.4+** | All | |
+| **Same addon build** | All | All players must share a compatible `protocol_version`. |
+| **GodotSteam GDExtension 4.4+** | Steam backend only | Plugin by [Gramps](https://godotsteam.com/). |
+| **Steam client running** | Steam backend only | Must be open on the player's machine. |
 
 ---
 
@@ -115,8 +122,9 @@ LinkUx **does not configure itself automatically**. You must call `LinkUx.initia
 extends Node
 
 func _ready() -> void:
-    # Wait one frame for the LinkUx autoload to be fully ready
-    await get_tree().process_frame
+    # Initialize Steam first if you plan to use the Steam backend
+    LinkUx.initialize_steam(480)   # 480 = Spacewar (use your real App ID)
+
     _init_linkux()
     LinkUx.scene_load_requested.connect(_on_scene_load_requested)
     LinkUx.session_closed.connect(_on_session_closed)
@@ -137,6 +145,8 @@ func _on_session_closed() -> void:
     get_tree().change_scene_to_file("res://scenes/menu.tscn")
 ```
 
+> `initialize_steam()` is only needed if you plan to use `NetworkEnums.BackendType.STEAM`. It is safe to call even if Steam is not running — it returns `false` and LinkUx continues normally.
+
 ---
 
 <!-- doc-shell:page slug="configuracion" -->
@@ -154,6 +164,7 @@ Main resource. Created with `LinkUxConfig.new()` and passed to `LinkUx.initializ
 | `default_backend` | `NetworkEnums.BackendType` | `NONE` | Backend activated when calling `initialize()`. If `NONE`, you must call `set_backend()` manually before creating or joining a session. |
 | `network` | `NetworkConfig` | `null` | Network timing and optimization settings. |
 | `lan` | `LanBackendConfig` | `null` | LAN backend specific configuration. |
+| `steam` | `SteamBackendConfig` | `null` | Steam backend specific configuration. |
 | `advanced` | `AdvancedConfig` | `null` | Advanced options. |
 | `debug_enabled` | `bool` | `false` | Enables internal debug hooks. |
 | `log_level` | `int` | `3` | Log verbosity level (see values below). |
@@ -206,6 +217,17 @@ LAN backend specific options (ENet).
 
 ---
 
+## SteamBackendConfig
+
+Steam backend specific options.
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `connection_timeout` | `float` | `10.0` | Maximum seconds to wait for `SteamMultiplayerPeer` to report `CONNECTION_CONNECTED`. If it expires, `connection_failed` is emitted. |
+| `lobby_type` | `int` | `2` | Steam lobby visibility. `0` = Private, `1` = Friends Only, `2` = Public, `3` = Invisible. |
+
+---
+
 ## AdvancedConfig
 
 Advanced behavioral options.
@@ -233,10 +255,15 @@ func _init_linkux() -> void:
     config.network.heartbeat_interval_ms = 3000.0
     config.network.disconnect_timeout_ms = 10000.0
 
-    # LAN
+    # LAN backend
     config.lan = LanBackendConfig.new()
     config.lan.default_port = 7777
     config.lan.connection_timeout = 5.0
+
+    # Steam backend
+    config.steam = SteamBackendConfig.new()
+    config.steam.connection_timeout = 12.0
+    config.steam.lobby_type = 2  # Public
 
     # Advanced
     config.advanced = AdvancedConfig.new()
@@ -279,7 +306,8 @@ close_session()  →  [signal session_closed]
 Activates the specified network backend. Must be called before creating or joining a session.
 
 ```gdscript
-LinkUx.set_backend(NetworkEnums.BackendType.LAN)
+LinkUx.set_backend(NetworkEnums.BackendType.LAN)    # Local network
+LinkUx.set_backend(NetworkEnums.BackendType.STEAM)  # Online via Steam
 ```
 
 ---
@@ -316,7 +344,12 @@ var err := LinkUx.join_session(session_info)
 
 ### `LinkUx.join_session_by_room_code(room_code: String) → int`
 
-Joins a LAN session using the 8-character room code.
+Joins a session using the room code. Works for both LAN and Steam backends — the active backend determines the expected code format.
+
+| Backend | Code format | Example |
+|---------|-------------|---------|
+| **LAN** | 8-character hex (encodes IP:port) | `A3F7KQ2P` |
+| **Steam** | 6-character alphanumeric (A–Z, 0–9) | `K7PQ3A` |
 
 ```gdscript
 var code := $CodeInput.text.strip_edges().to_upper()
@@ -362,6 +395,7 @@ func _ready() -> void:
 | `is_singleplayer()` | `bool` | `true` if there is only one player in the session. |
 | `is_multiplayer()` | `bool` | `true` if there is more than one player. |
 | `is_lan()` | `bool` | `true` if the active backend is LAN. |
+| `is_online()` | `bool` | `true` if the active backend is Steam (online). |
 
 ---
 
@@ -371,10 +405,10 @@ func _ready() -> void:
 |----------|------|-------------|
 | `session_id` | `String` | Unique session ID. |
 | `session_name` | `String` | Room name. |
-| `host_peer_id` | `int` | Network ID of the host (always `1` in LAN). |
+| `host_peer_id` | `int` | Network ID of the host (always `1` in LAN and Steam). |
 | `max_players` | `int` | Player limit configured at creation. |
 | `room_code` | `String` | Alphanumeric room code. |
-| `backend_data` | `Dictionary` | Backend-opaque data (e.g. IP:port in LAN). |
+| `backend_data` | `Dictionary` | Backend-opaque data (e.g. IP:port in LAN, Steam lobby ID in Steam). |
 
 ---
 
@@ -393,7 +427,7 @@ func _ready() -> void:
 
 ---
 
-## Example — Main menu
+## Example — Main menu (both backends)
 
 ```gdscript
 extends Control
@@ -403,21 +437,35 @@ func _ready() -> void:
     LinkUx.session_started.connect(_on_session_started)
     LinkUx.connection_failed.connect(_on_connection_failed)
 
-func _on_host_btn_pressed() -> void:
+# ── LAN ──────────────────────────────────────────────
+func _on_lan_host_pressed() -> void:
     LinkUx.set_local_player_name($NicknameInput.text)
     LinkUx.set_backend(NetworkEnums.BackendType.LAN)
-    var err := LinkUx.create_session("Room of %s" % $NicknameInput.text, 4)
-    if err != NetworkEnums.ErrorCode.SUCCESS:
-        _show_error("Could not create room (error %d)" % err)
+    LinkUx.create_session("Room of %s" % $NicknameInput.text, 4)
 
-func _on_join_btn_pressed() -> void:
+func _on_lan_join_pressed() -> void:
     LinkUx.set_local_player_name($NicknameInput.text)
     LinkUx.set_backend(NetworkEnums.BackendType.LAN)
-    var err := LinkUx.join_session_by_room_code($CodeInput.text.strip_edges())
-    if err != NetworkEnums.ErrorCode.SUCCESS:
-        _show_error("Invalid code or room not found")
+    LinkUx.join_session_by_room_code($CodeInput.text.strip_edges())
 
+# ── Steam Online ──────────────────────────────────────
+func _on_online_host_pressed() -> void:
+    if not LinkUx.is_steam_initialized():
+        _show_error("Steam is not running."); return
+    LinkUx.set_local_player_name(LinkUx.get_steam_user())
+    LinkUx.set_backend(NetworkEnums.BackendType.STEAM)
+    LinkUx.create_session("Room of %s" % LinkUx.get_steam_user(), 8)
+
+func _on_online_join_pressed() -> void:
+    if not LinkUx.is_steam_initialized():
+        _show_error("Steam is not running."); return
+    LinkUx.set_local_player_name(LinkUx.get_steam_user())
+    LinkUx.set_backend(NetworkEnums.BackendType.STEAM)
+    LinkUx.join_session_by_room_code($CodeInput.text.strip_edges().to_upper())
+
+# ── Common ─────────────────────────────────────────────
 func _on_session_started() -> void:
+    $CodeLabel.text = "Code: " + LinkUx.get_room_code()
     if LinkUx.is_host():
         LinkUx.request_scene_load("res://scenes/level.tscn")
 
@@ -481,8 +529,6 @@ Returns the local player's name.
 
 ## Dynamic player data
 
-You can store custom data in each player at runtime:
-
 ### `LinkUx.update_local_player_data(key: String, value: Variant) → void`
 
 ```gdscript
@@ -496,10 +542,6 @@ LinkUx.update_local_player_data("ready", true)
 LinkUx.remove_local_player_data("ready")
 ```
 
-### `LinkUx.set_player_data(peer_id, key, value) → bool`
-
-Modifies any player's data (locally only, not automatically synchronized).
-
 ### `LinkUx.get_player_data(peer_id) → Dictionary`
 
 ```gdscript
@@ -507,18 +549,15 @@ var data := LinkUx.get_player_data(peer_id)
 print("Score: ", data.get("score", 0))
 ```
 
-### `LinkUx.remove_player_data(peer_id, key) → bool`
-
 ---
 
 ## Kicking a player
 
 ### `LinkUx.kick_player(peer_id: int, reason: String) → void`
 
-Only the host can kick players. The kicked client receives `reason` as an error message in the `connection_failed` signal.
+Only the host can kick players. The kicked client receives `reason` as an error message in the `connection_failed` signal. Works identically on both LAN and Steam backends.
 
 ```gdscript
-# Only valid from the host
 if LinkUx.is_host():
     LinkUx.kick_player(peer_id, "Inappropriate behavior")
 ```
@@ -534,20 +573,6 @@ if LinkUx.is_host():
 | `is_host` | `bool` | `true` if this player is the host. |
 | `metadata` | `Dictionary` | Metadata set in `set_player_profile`. |
 | `data` | `Dictionary` | Dynamic data updatable at runtime. |
-
----
-
-## Example — Show player list
-
-```gdscript
-func _update_player_list() -> void:
-    for info in LinkUx.get_players():
-        var label := Label.new()
-        var prefix := "[HOST] " if info.is_host else ""
-        var yours := " (you)" if LinkUx.is_local_player_info(info) else ""
-        label.text = prefix + info.display_name + yours
-        $PlayerList.add_child(label)
-```
 
 ---
 
@@ -578,54 +603,17 @@ Use **`LinkUxSynchronizer`** when remote players must see **smooth** motion. Use
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `authority_mode` | `NetworkEnums.AuthorityMode` | `HOST` | Sets LinkUx **authority policy** for the parent (`HOST`, `OWNER`, `TRANSFERABLE`). `AuthorityManager` assigns the concrete peer when the entity registers. |
-| `replicated_properties` | `PackedStringArray` | `[]` | Names of **parent** properties to replicate. Only simple names (`"health"`, `"global_position"`). Unlike the Synchronizer, there is **no** `"Child:property"` syntax. |
-| `replication_mode` | `NetworkEnums.ReplicationMode` | `ON_CHANGE` | `ALWAYS`: send every tick; `ON_CHANGE`: send when values differ from the last snapshot; `MANUAL`: requires advanced/manual flushing. |
+| `authority_mode` | `NetworkEnums.AuthorityMode` | `HOST` | Sets LinkUx **authority policy** for the parent (`HOST`, `OWNER`, `TRANSFERABLE`). |
+| `replicated_properties` | `PackedStringArray` | `[]` | Names of **parent** properties to replicate. Only simple names (`"health"`, `"global_position"`). |
+| `replication_mode` | `NetworkEnums.ReplicationMode` | `ON_CHANGE` | `ALWAYS`: send every tick; `ON_CHANGE`: send when values differ; `MANUAL`: requires explicit flushing. |
 
 ### Authority modes (AuthorityMode)
 
 | Mode | Description |
 |------|-------------|
-| `HOST` | The host has absolute authority. Clients receive state but cannot modify it. Ideal for world objects (doors, server-side projectiles). |
+| `HOST` | The host has absolute authority. Clients receive state but cannot modify it. Ideal for world objects. |
 | `OWNER` | The peer that spawned the entity has authority. Ideal for player characters. |
 | `TRANSFERABLE` | Authority can be dynamically transferred between peers. Useful for pickable objects. |
-
-### Replication modes (ReplicationMode)
-
-| Mode | Description |
-|------|-------------|
-| `ALWAYS` | Send updates every tick even if the value hasn't changed. Higher bandwidth usage. |
-| `ON_CHANGE` | Only send when the value changes from the last tick. Recommended for most cases. |
-| `MANUAL` | Only send when explicitly triggered via `register_entity()`. For very infrequent state objects. |
-
----
-
-## How to use in the editor
-
-1. Open the scene that should exist on every peer (a door in the level, a pickup, a character **not** spawned through `LinkUxSpawner`, etc.).
-2. Select the **root node** that owns the variables you need (`StaticBody3D`, `Area3D`, `CharacterBody3D`, …).
-3. Right click → **Add Child Node** → **`LinkUxEntity`** (addon category).
-4. In the inspector:
-   - **`Authority mode`:** `HOST` for world props; `OWNER` if the spawning peer should simulate it; `TRANSFERABLE` when using `request_authority` / `transfer_authority`.
-   - **`Replicated properties`:** edit the `PackedStringArray` and type each property **exactly** as declared on the parent script (`health`, `is_open`, …). Values must be serializable by the replicator.
-   - **`Replication mode`:** keep `ON_CHANGE` unless you need fixed per-tick sampling (`ALWAYS`).
-
-```
-CharacterBody3D  ← node to replicate
-└── LinkUxEntity
-    authority_mode: OWNER
-    replicated_properties: ["position", "rotation", "health"]
-```
-
-### Registration timing
-
-`LinkUxEntity` defers `_register()` with `call_deferred`. Registration happens only if **`LinkUx.is_in_session()`** is already true when the node enters the tree. If you instance the scene before joining, nothing is registered until you reload it during a session — typical games load gameplay **after** `session_started` / `scene_all_ready`.
-
----
-
-## Automatic registration
-
-`LinkUxEntity` automatically registers with the `StateReplicator` when entering the scene tree (if a session is already active). It also automatically unregisters when leaving the tree. You don't need to call any methods manually.
 
 ---
 
@@ -641,9 +629,6 @@ func toggle() -> void:
     if not LinkUx.is_host():
         return  # Only the host can open/close
     is_open = not is_open
-    _update_visual()
-
-func _update_visual() -> void:
     $AnimationPlayer.play("open" if is_open else "close")
 ```
 
@@ -668,48 +653,9 @@ StaticBody3D (door.gd)
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `sync_properties` | `Array[String]` | `[]` | Property paths watched on the **parent** of the synchronizer. Use plain names (`"velocity"`) or child paths (`"CameraPivot:rotation"`). |
-| `replication_mode` | `NetworkEnums.ReplicationMode` | `ALWAYS` | Defaults to per-tick updates — ideal for motion. Switch to `ON_CHANGE` if only a few keys change and you want to save bandwidth. |
-| `interpolate` | `bool` | `true` | When `true`, remote peers **lerp** vectors and **lerp_angle** rotations. When `false`, incoming dictionaries flush immediately. |
-| `remote_smoothing_hz` | `float` (2–45) | `16.0` | Blend factor per frame: `clampf(remote_smoothing_hz * delta, 0, 1)`. Higher values **track the latest packet** more aggressively; lower values **smooth** more. |
-
-### Additional variables (script only)
-
-| Variable | Type | Default | Description |
-|----------|------|---------|-------------|
-| `position_snap_epsilon` | `float` | `0.0002` | When closer than this threshold, position snaps exactly and the key leaves `_pending_state`. |
-| `rotation_snap_epsilon` | `float` | `0.0002` | Same idea for rotations (per-axis `lerp_angle` when property name is `rotation`). |
-
----
-
-## Adding properties from the inspector
-
-The addon registers a **custom inspector** (`linkux_sync_inspector_plugin.gd`) so you rarely edit the raw array by hand:
-
-1. Select the **`LinkUxSynchronizer`** node.
-2. Locate the **Synchronized Properties** section (label follows the editor language).
-3. The list shows each entry with node/type icons, a readable path, and a trash icon to remove it.
-4. Click **Add Sync Property**:
-   - A dialog opens with the **scene tree** on the left and **serialized properties** on the right.
-   - Use the search field to filter long lists.
-   - Double-click a property or select it and press **Add Property**.
-   - Properties on the **same node as the synchronizer’s parent** store as `"property"`. Properties on descendants store as `"Child:property"` or `"Path/To/Child:property"`.
-5. **Refresh List** rebuilds the UI if you rename nodes externally.
-6. All edits integrate with Godot’s **Undo/Redo** stack.
-
-Rows tint **orange** when the node segment no longer resolves — fix the path or pick the property again.
-
-> Advanced users can still assign `sync_properties` via tool scripts, but the dialog prevents typos.
-
-### Local ownership rules
-
-The synchronizer mirrors gameplay authority:
-
-- If the parent exposes `player_peer_id`, it is compared to `LinkUx.get_local_peer_id()`.
-- Otherwise `LinkUx.is_entity_authority(parent)` is used when available.
-
-Owners skip remote smoothing; everyone else interpolates toward the latest data.
-
----
+| `replication_mode` | `NetworkEnums.ReplicationMode` | `ALWAYS` | Defaults to per-tick updates — ideal for motion. |
+| `interpolate` | `bool` | `true` | When `true`, remote peers **lerp** vectors and **lerp_angle** rotations. |
+| `remote_smoothing_hz` | `float` (2–45) | `16.0` | Blend factor per frame. Higher values track packets more aggressively; lower values smooth more. |
 
 ## `sync_properties` format
 
@@ -724,32 +670,6 @@ sync_properties = [
 ```
 
 > **Note:** Only synchronizes properties Godot can serialize: `int`, `float`, `bool`, `String`, `Vector2`, `Vector3`, `Quaternion`, `Color`, etc.
-
----
-
-## How interpolation works
-
-When a remote state arrives, the Synchronizer doesn't apply values immediately. Instead, it stores them as `_pending_state` and in each `_process()` frame does a `lerp` toward the target:
-
-```
-Received state → _pending_state
-_process() → lerp(current_position, target, remote_smoothing_hz * delta)
-```
-
-Rotation uses `lerp_angle()` to correctly handle the ±π cut (avoids 360° rotations).
-
-Only remote objects are interpolated. The local player applies values instantaneously.
-
----
-
-## Rule: one Synchronizer per node
-
-There can only be **one** active `LinkUxSynchronizer` per parent node. If you add more than one, the system will emit a warning and only the first (in child order) will be the primary:
-
-```
-[LinkUx] WARN: Multiple synchronizers detected under 'Player'.
-               'Synchronizer2' will be ignored; primary is 'Synchronizer'.
-```
 
 ---
 
@@ -774,7 +694,6 @@ func _ready() -> void:
     if not LinkUx.is_local_player_id(player_peer_id):
         set_process_unhandled_input(false)
         return
-    # Local player only: configure camera, etc.
     $Camera3D.current = true
 
 func _physics_process(_delta: float) -> void:
@@ -801,15 +720,8 @@ func _physics_process(_delta: float) -> void:
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `spawn_path` | `NodePath` | Path (relative to the spawner) to the node used as parent for instances — e.g. `Players`. Leave **empty** to parent new instances directly to the **spawner’s own parent**. |
-| `spawnable_scenes` | `Array[PackedScene]` | Scenes you can spawn by index. Keep ordering identical in every build so `spawn(scene_index, …)` maps to the same `.tscn` on all peers. |
-
-### Inspector workflow
-
-1. Add a container node (often `Node3D` named `Players`).
-2. Instance **`LinkUxSpawner`** beside it (anywhere convenient in the hierarchy).
-3. Drag the container into **`Spawn Path`** or type the relative path.
-4. Fill **`Spawnable Scenes`** with each `PackedScene` in the order your scripts expect.
+| `spawn_path` | `NodePath` | Path (relative to the spawner) to the node used as parent for instances. Leave **empty** to parent new instances directly to the **spawner's own parent**. |
+| `spawnable_scenes` | `Array[PackedScene]` | Scenes you can spawn by index. Keep ordering identical in every build. |
 
 ---
 
@@ -818,12 +730,6 @@ func _physics_process(_delta: float) -> void:
 ### `spawn(scene_index, properties, authority_peer) → Node`
 
 Instantiates the scene at the given index, applies the properties and replicates to all peers.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `scene_index` | `int` | Index in `spawnable_scenes`. |
-| `properties` | `Dictionary` | Properties to apply before `_ready()`. |
-| `authority_peer` | `int` | Peer that will have authority over the entity. Default `1` (host). |
 
 ```gdscript
 var player := $PlayerSpawner.spawn(
@@ -837,10 +743,6 @@ var player := $PlayerSpawner.spawn(
 )
 ```
 
-> **Important:** Non-transform properties (`position`, `rotation`, etc.) are applied **before** `add_child()`, so the node configures itself correctly in `_ready()`.
-
----
-
 ### `despawn(entity: Node) → void`
 
 Removes the entity locally and notifies all peers to remove it too.
@@ -851,21 +753,10 @@ $PlayerSpawner.despawn(my_player)
 
 ---
 
-### `unicast_spawn_to_peer(scene_index, properties, authority_peer, target_peer, spawn_id) → void`
-
-Sends a spawn only to a specific peer. Used internally for late-join, but you can also use it to spawn entities only certain peers should see.
-
----
-
 ## Automatic behavior
 
-### Despawn on disconnect
-
-When a peer disconnects, the Spawner (on the host) automatically removes all entities whose `authority_peer` is the disconnected peer. No need to code this.
-
-### Late join — Spawn replay
-
-When a player joins a session in progress, the host automatically sends all existing spawns to the new player. The world is consistent without additional code.
+- **Despawn on disconnect**: When a peer disconnects, the Spawner automatically removes all entities owned by that peer.
+- **Late join**: When a player joins a session in progress, the host automatically sends all existing spawns to the new player. Works on both LAN and Steam backends.
 
 ---
 
@@ -874,50 +765,9 @@ When a player joins a session in progress, the host automatically sends all exis
 ```
 Level (Node3D)
 ├── PlayerSpawner (LinkUxSpawner)
-│   spawn_path: Players         ← Relative NodePath
+│   spawn_path: Players
 │   spawnable_scenes: [player.tscn]
-└── Players (Node3D)            ← Players are created here
-```
-
----
-
-## Example — Player spawning in the level
-
-```gdscript
-# level.gd
-extends Node3D
-
-@onready var spawner: LinkUxSpawner = $PlayerSpawner
-
-func _ready() -> void:
-    LinkUx.player_joined.connect(_on_player_joined)
-    LinkUx.player_left_processed.connect(_on_player_left)
-
-    # Spawn local player
-    _spawn_player(LinkUx.get_local_peer_id())
-    LinkUx.report_scene_ready()
-
-func _on_player_joined(info: PlayerInfo) -> void:
-    if info.peer_id == LinkUx.get_local_peer_id():
-        return  # Already spawned in _ready
-    _spawn_player(info.peer_id)
-
-func _on_player_left(_info: PlayerInfo, _reason: int) -> void:
-    pass  # Spawner cleans up automatically
-
-func _spawn_player(peer_id: int) -> void:
-    spawner.spawn(0, {
-        "player_peer_id": peer_id,
-        "player_nickname": LinkUx.get_player_info(peer_id).display_name,
-        "global_position": _get_spawn_point(),
-    }, peer_id)
-
-func _get_spawn_point() -> Vector3:
-    return Vector3(randf_range(-4.0, 4.0), 1.0, randf_range(-4.0, 4.0))
-
-func _unhandled_key_input(event: InputEvent) -> void:
-    if event.is_action_pressed("ui_cancel"):
-        LinkUx.close_session()
+└── Players (Node3D)
 ```
 
 ---
@@ -926,11 +776,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 # RPC System
 
-LinkUx provides a **remote procedure call** (RPC) system completely independent from Godot's built-in RPC system. LinkUx RPCs are routed through the `RpcRelay` and support both reliable and unreliable modes.
+LinkUx provides a **remote procedure call** (RPC) system completely independent from Godot's built-in RPC system. LinkUx RPCs are routed through the `RpcRelay` and support both reliable and unreliable modes. Works identically on LAN and Steam backends.
 
 ## Send methods
-
-### Directed send
 
 ```gdscript
 # Send to a specific peer
@@ -938,11 +786,7 @@ LinkUx.send_rpc(peer_id, "my_method", [arg1, arg2], true)
 
 # Send to host
 LinkUx.send_rpc_to_host("my_method", [arg1])
-```
 
-### Broadcast
-
-```gdscript
 # Send to all peers (including local)
 LinkUx.broadcast_rpc("update_score", [peer_id, score])
 ```
@@ -956,13 +800,9 @@ LinkUx.broadcast_rpc("update_score", [peer_id, score])
 | `send_to_player(peer_id, method, payload, reliable)` | To a specific player. |
 | `send_to_clients(method, payload, reliable)` | To all clients (excludes host). |
 
-> The `send_to_*` methods automatically wrap `payload` in an array if it isn't one.
-
 ---
 
 ## Registering handlers
-
-To receive RPCs, you must register a handler with the method name:
 
 ```gdscript
 func _ready() -> void:
@@ -970,15 +810,12 @@ func _ready() -> void:
 
 func _on_receive_message(from_peer: int, message: String) -> void:
     print("[%s]: %s" % [from_peer, message])
+
+func _exit_tree() -> void:
+    LinkUx.unregister_rpc("receive_message")
 ```
 
 > **Note:** The first argument of the handler is always `from_peer: int` (the sender's ID), followed by the sent arguments.
-
-### Unregister a handler
-
-```gdscript
-LinkUx.unregister_rpc("receive_message")
-```
 
 ---
 
@@ -986,35 +823,8 @@ LinkUx.unregister_rpc("receive_message")
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| `reliable` | `true` | ENet guarantees delivery and order. Use for critical events (spawn, death, score). |
-| `reliable` | `false` | UDP packets with no guarantee. Lower latency, may be lost. Use for frequent position updates. |
-
----
-
-## Example — Chat system
-
-```gdscript
-# chat.gd
-extends Control
-
-func _ready() -> void:
-    LinkUx.register_rpc("chat_message", _on_chat_message)
-
-func _exit_tree() -> void:
-    LinkUx.unregister_rpc("chat_message")
-
-func _on_send_btn_pressed() -> void:
-    var msg := $Input.text.strip_edges()
-    if msg.is_empty():
-        return
-    var name := LinkUx.get_local_player_name()
-    # Send to everyone (including myself to see it on screen)
-    LinkUx.broadcast_rpc("chat_message", [name, msg])
-    $Input.text = ""
-
-func _on_chat_message(_from_peer: int, name: String, message: String) -> void:
-    $Log.text += "\n[%s]: %s" % [name, message]
-```
+| `reliable` | `true` | Guaranteed delivery and order. Use for critical events (spawn, death, score). |
+| `reliable` | `false` | No delivery guarantee. Lower latency. Use for frequent position updates. |
 
 ---
 
@@ -1028,8 +838,6 @@ The **global state** is a key-value dictionary synchronized with all peers. Only
 
 ### `LinkUx.set_global_state(key: String, value: Variant) → void`
 
-Sets a value in the global state and replicates it to all peers.
-
 ```gdscript
 # Host only
 if LinkUx.is_host():
@@ -1040,8 +848,6 @@ if LinkUx.is_host():
 
 ### `LinkUx.get_global_state(key: String, default: Variant = null) → Variant`
 
-Reads a value from the global state. If the key doesn't exist, returns `default`.
-
 ```gdscript
 var phase: String = LinkUx.get_global_state("game_phase", "waiting")
 var time: int     = LinkUx.get_global_state("time_remaining", 0)
@@ -1050,8 +856,6 @@ var time: int     = LinkUx.get_global_state("time_remaining", 0)
 ---
 
 ## Signal `global_state_changed`
-
-When any global state value changes, this signal is emitted on all peers:
 
 ```gdscript
 func _ready() -> void:
@@ -1072,7 +876,7 @@ func _on_state_changed(key: String, value: Variant) -> void:
 - **Game phases**: `"lobby"`, `"countdown"`, `"combat"`, `"end"`
 - Synchronized **countdown timer**
 - Global **scoreboard**
-- **Match configuration**: number of rounds, difficulty, chosen map
+- **Match configuration**: rounds, difficulty, chosen map
 - **Random seeds** for consistent procedural generation
 
 ---
@@ -1087,20 +891,11 @@ func _on_state_changed(key: String, value: Variant) -> void:
 
 ### `LinkUx.set_entity_authority(entity: Node, peer_id: int) → void`
 
-Assigns authority over an entity to a specific peer.
-
 ```gdscript
-# Host assigns authority over an object to player 2
 LinkUx.set_entity_authority($CentralObject, 2)
 ```
 
-### `LinkUx.get_entity_authority(entity: Node) → int`
-
-Returns the `peer_id` of the peer with authority. `-1` if not registered.
-
 ### `LinkUx.is_entity_authority(entity: Node) → bool`
-
-`true` if the local peer has authority over the entity.
 
 ```gdscript
 func _physics_process(_delta: float) -> void:
@@ -1109,22 +904,12 @@ func _physics_process(_delta: float) -> void:
     # ... physics logic
 ```
 
-### `LinkUx.request_authority(entity: Node) → void`
-
-The local peer requests authority over an entity (requires `TRANSFERABLE` mode).
-
 ### `LinkUx.transfer_authority(entity: Node, to_peer_id: int) → void`
-
-Transfers authority to another peer (only valid from the current authority peer or the host).
 
 ```gdscript
 # Host transfers control of a vehicle to the mounting player
 LinkUx.transfer_authority($Vehicle, driver_peer_id)
 ```
-
-### `LinkUx.validate_authority_change(entity: Node, peer_id: int) → bool`
-
-Checks whether it's valid to transfer authority to that peer.
 
 ---
 
@@ -1150,7 +935,7 @@ LinkUx exposes **26 signals** covering the entire multiplayer lifecycle. Connect
 |--------|------------|--------------|
 | `session_created` | `session_info: SessionInfo` | Host has successfully created the session. |
 | `session_joined` | `session_info: SessionInfo` | Client has successfully joined the session. |
-| `session_started` | — | Session is ready (emitted on both host AND client after `session_created`/`session_joined`). Use it to start scene loading. |
+| `session_started` | — | Session is ready (emitted on both host AND client). Use it to start scene loading. |
 | `session_closed` | — | Session closed (by `close_session()` or host disconnect). |
 | `session_ended` | — | Emitted internally when session cleanup finishes. |
 
@@ -1161,14 +946,14 @@ LinkUx exposes **26 signals** covering the entire multiplayer lifecycle. Connect
 | `player_joined` | `player_info: PlayerInfo` | A new peer (including yourself) entered the session. |
 | `player_left` | `peer_id: int, reason: int` | A peer disconnected (before cleanup). |
 | `player_left_processed` | `player_info: PlayerInfo, reason: int` | A peer disconnected (after their state was cleaned up). Use for UI. |
-| `player_updated` | `player_info: PlayerInfo` | A player's data changed (name, metadata, data). |
+| `player_updated` | `player_info: PlayerInfo` | A player's data changed. |
 
 ## Connection
 
 | Signal | Parameters | When emitted |
 |--------|------------|--------------|
 | `connection_failed` | `error: String` | Connection/session creation attempt failed. |
-| `connection_state_changed` | `new_state: int` | Connection state changed. See `NetworkEnums.ConnectionState`. |
+| `connection_state_changed` | `new_state: int` | Connection state changed. |
 | `protocol_version_mismatch` | `local: int, remote: int` | Client has an incompatible protocol version with the host. |
 | `backend_incompatible` | `reason: String` | Active backend doesn't support required capabilities. |
 
@@ -1190,14 +975,7 @@ LinkUx exposes **26 signals** covering the entire multiplayer lifecycle. Connect
 
 | Signal | Parameters | When emitted |
 |--------|------------|--------------|
-| `network_tick` | `tick_number: int, delta: float` | Every network tick. Useful for tick-dependent logic. |
-
-## Debug & internal
-
-| Signal | Parameters | When emitted |
-|--------|------------|--------------|
-| `feedback_log_added` | `entry: Dictionary` | An entry was added to the internal log. |
-| `late_join_spawn_replay_needed` | `peer_id: int` | (Host only) A peer did a late-join and needs spawn replay. `LinkUxSpawner` handles this automatically. |
+| `network_tick` | `tick_number: int, delta: float` | Every network tick. |
 
 ---
 
@@ -1223,7 +1001,7 @@ func _on_connection_failed(error: String) -> void:
 func _on_player_joined(info: PlayerInfo) -> void:
     print("Player joined: ", info.display_name, " (", info.peer_id, ")")
 
-func _on_player_left(info: PlayerInfo, reason: int) -> void:
+func _on_player_left(info: PlayerInfo, _reason: int) -> void:
     print("Player left: ", info.display_name)
 ```
 
@@ -1235,16 +1013,20 @@ func _on_player_left(info: PlayerInfo, reason: int) -> void:
 
 Complete reference of all public methods of the `LinkUx` Autoload.
 
-## Configuration
+## Configuration & Steam
 
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `initialize(config)` | `int` | Initializes LinkUx with the given config. Returns `ErrorCode`. |
+| `initialize_steam(app_id)` | `bool` | Initializes GodotSteam for the Steam backend. Writes `steam_appid.txt` automatically. Returns `true` on success. |
+| `is_steam_initialized()` | `bool` | Whether Steam was successfully initialized. |
+| `get_steam_user()` | `String` | Local Steam display name, or `"Player"` if unavailable. |
 | `set_backend(backend_type)` | `void` | Activates the specified backend. |
 | `get_config()` | `LinkUxConfig` | Active config (`null` if not initialized). |
-| `get_protocol_version()` | `int` | Internal protocol version. |
+| `get_version()` | `String` | Addon version string read from `plugin.cfg` (e.g. `"2.1.0"`). |
+| `get_protocol_version()` | `int` | Internal network protocol version (integer). |
 | `get_backend_type()` | `int` | Active backend type (`NetworkEnums.BackendType`). |
-| `get_backend_name()` | `String` | Human-readable name of the active backend. |
+| `get_backend_name()` | `String` | Human-readable name of the active backend (`"LAN"` or `"Steam"`). |
 
 ## Session
 
@@ -1253,7 +1035,7 @@ Complete reference of all public methods of the `LinkUx` Autoload.
 | `prepare_for_new_session()` | `void` | Clears state for a new session. |
 | `create_session(name, max, meta)` | `int` | Creates session as host. |
 | `join_session(session_info)` | `int` | Joins as client with SessionInfo. |
-| `join_session_by_room_code(code)` | `int` | Joins by room code. |
+| `join_session_by_room_code(code)` | `int` | Joins by room code (LAN=8 chars, Steam=6 chars). |
 | `close_session()` | `void` | Closes the active session. |
 | `get_current_session()` | `SessionInfo` | Active session or `null`. |
 | `get_room_code()` | `String` | Active room code. |
@@ -1264,6 +1046,7 @@ Complete reference of all public methods of the `LinkUx` Autoload.
 | `is_singleplayer()` | `bool` | Only one player? |
 | `is_multiplayer()` | `bool` | More than one player? |
 | `is_lan()` | `bool` | LAN backend active? |
+| `is_online()` | `bool` | Steam backend active? |
 
 ## Players
 
@@ -1334,19 +1117,11 @@ Complete reference of all public methods of the `LinkUx` Autoload.
 | `register_rpc(method, callable)` | `void` | Register handler. |
 | `unregister_rpc(method)` | `void` | Unregister handler. |
 
-## Optimization
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `set_interest_area(entity, area)` | `void` | Define interest area (network culling). |
-| `get_network_stats()` | `Dictionary` | Connection statistics. |
-
 ## Debug
 
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `debug_mode(enabled)` | `void` | Enable/disable debug mode. |
-| `enable_debug_overlay(enabled)` | `void` | Enable debug hooks. |
 | `get_debug_metrics()` | `Dictionary` | Basic metrics: state, tick, peers, backend. |
 | `dump_network_state()` | `Dictionary` | Full network state dump. |
 | `get_connection_state()` | `int` | Internal state machine state. |
@@ -1386,7 +1161,7 @@ var metrics := LinkUx.get_debug_metrics()
 #   "state":   "RUNNING",    ← Internal state machine state
 #   "tick":    247,          ← Current network tick
 #   "peers":   3,            ← Connected peers
-#   "backend": "LAN"         ← Active backend
+#   "backend": "Steam"       ← Active backend ("LAN" or "Steam")
 # }
 ```
 
@@ -1396,15 +1171,6 @@ var metrics := LinkUx.get_debug_metrics()
 
 ```gdscript
 var state := LinkUx.dump_network_state()
-# {
-#   "state_machine": "RUNNING",
-#   "backend":       "LAN",
-#   "is_host":       true,
-#   "local_peer_id": 1,
-#   "connected_peers": [2, 3],
-#   "players":       [1, 2, 3],
-#   "session":       { session_id, room_code, ... }
-# }
 print(JSON.stringify(state, "  "))
 ```
 
@@ -1412,13 +1178,11 @@ print(JSON.stringify(state, "  "))
 
 ## Log system
 
-LinkUx maintains an internal log feed accessible with:
-
 ```gdscript
 # Last 50 entries of any level
 var logs := LinkUx.get_logs(50)
 
-# Errors only (limit 0 = all)
+# Errors only
 var errors := LinkUx.get_logs_type("ERROR")
 
 # INFO level and above
@@ -1429,34 +1193,13 @@ Each log entry is a `Dictionary`:
 
 ```gdscript
 {
-    "level":          3,           # int — LogLevel
-    "level_name":     "INFO",      # String
-    "context":        "Core",      # System that generated the log
-    "message":        "Initialized with backend: LAN",
-    "formatted":      "[INFO][Core] Initialized with backend: LAN",
-    "timestamp_msec": 12430        # Time.get_ticks_msec()
+    "level":          3,
+    "level_name":     "INFO",
+    "context":        "Core",
+    "message":        "Initialized with backend: Steam",
+    "formatted":      "[INFO][Core] Initialized with backend: Steam",
+    "timestamp_msec": 12430
 }
-```
-
-### Listen to logs in real time
-
-```gdscript
-func _ready() -> void:
-    LinkUx.feedback_log_added.connect(_on_log)
-
-func _on_log(entry: Dictionary) -> void:
-    if entry["level"] >= 3:  # INFO or above
-        $DebugLabel.text += "\n" + entry["formatted"]
-```
-
-### Configure capacity
-
-```gdscript
-# Keep only the last 200 entries (default 500)
-LinkUx.set_feedback_log_capacity(200)
-
-# Clear the log
-LinkUx.clear_feedback_logs()
 ```
 
 ---
@@ -1477,6 +1220,7 @@ func _process(_delta: float) -> void:
     $Grid/Backend.text = m.get("backend", "—")
     $Grid/PeerID.text  = str(LinkUx.get_local_peer_id())
     $Grid/IsHost.text  = str(LinkUx.is_host())
+    $Grid/Version.text = LinkUx.get_version()
 ```
 
 ---
@@ -1485,7 +1229,7 @@ func _process(_delta: float) -> void:
 
 # LAN Backend
 
-The LAN backend is the only backend currently available in LinkUx. It is based on Godot's **ENetMultiplayerPeer** and allows local network play with direct IP and port connection.
+The LAN backend uses Godot's **ENetMultiplayerPeer** and allows local network play with direct IP and port connection. No internet connection or external accounts required.
 
 ## How it works
 
@@ -1502,99 +1246,241 @@ The host relays packets from each client to the rest.
 
 ## Room code
 
-When creating a LAN session, LinkUx automatically generates an **8-character alphanumeric room code** (e.g. `"A3F7KQ2P"`). Clients use this code to find and join the room without needing to know the host's IP address.
-
-Internally, the code encodes the IP and port of the ENet server. When resolving the code, LinkUx connects directly to the peer acting as host.
+When creating a LAN session, LinkUx automatically generates an **8-character hex room code** (e.g. `"A3F7KQ2P"`). Internally, the code encodes the host's IP address and ENet port. Clients resolve the code and connect directly — no IP knowledge required.
 
 ```gdscript
-# After creating the session, show the code
-func _on_session_created(info: SessionInfo) -> void:
-    $CodeLabel.text = "Room code: " + info.room_code
-    # Also accessible as:
-    # LinkUx.get_room_code()
+func _on_session_started() -> void:
+    var code := LinkUx.get_room_code()  # e.g. "A3F7KQ2P"
+    $CodeLabel.text = "Room code: " + code
 ```
 
 ## Port stride — Multiple hosts on the same machine
 
-For testing on the same PC, `LanBackendConfig.lan_port_stride` allows creating multiple servers on the same machine. If the base port (`7777`) is already occupied, LinkUx tries `7779`, `7781`, etc., up to `max_lan_host_attempts` tries.
+For testing with multiple instances on the same PC, `LanBackendConfig.lan_port_stride` lets LinkUx try consecutive ports if the base port is already occupied.
 
 ```gdscript
 config.lan = LanBackendConfig.new()
-config.lan.default_port         = 7777
-config.lan.lan_port_stride      = 2
+config.lan.default_port          = 7777
+config.lan.lan_port_stride       = 2
 config.lan.max_lan_host_attempts = 8
-// Tries: 7777, 7779, 7781, 7783, 7785, 7787, 7789, 7791
+# Tries: 7777, 7779, 7781, 7783, 7785, 7787, 7789, 7791
 ```
 
 ## Connection timeout
 
-When joining by code, if the ENet connection cannot be established within `connection_timeout` seconds, LinkUx closes the attempt and emits `connection_failed`:
+If the ENet connection cannot be established within `connection_timeout` seconds, LinkUx emits `connection_failed`:
 
 ```gdscript
-config.lan.connection_timeout = 3.0  // seconds
+config.lan.connection_timeout = 3.0  # seconds
 ```
 
 ## Note on `multiplayer_poll`
 
-LinkUx uses custom binary packets through ENet, separate from Godot's RPC system. Therefore, when enabling the LAN backend, LinkUx **automatically disables** `SceneTree.multiplayer_poll` to prevent Godot from trying to parse LinkUx packets as engine RPCs.
+LinkUx uses custom binary packets through ENet, separate from Godot's RPC system. When the LAN backend is enabled, LinkUx **automatically disables** `SceneTree.multiplayer_poll`. This is transparent — you don't need to do it manually.
 
-This is transparent — you don't need to do it manually.
-
-## Enable the LAN backend
+## Activate the LAN backend
 
 ```gdscript
 LinkUx.set_backend(NetworkEnums.BackendType.LAN)
-// — or in initial config —
+# — or in initial config —
 config.default_backend = NetworkEnums.BackendType.LAN
+```
+
+---
+
+<!-- doc-shell:page slug="backend-steam" -->
+
+# Steam Backend
+
+The Steam backend enables **online multiplayer** via Valve's Steam platform. It uses **Steam Lobbies** for session discovery and **SteamMultiplayerPeer** as the transport layer. Relay, NAT traversal, and encryption are handled automatically by Steam.
+
+## Requirements
+
+| Item | Details |
+|------|---------|
+| **GodotSteam GDExtension 4.4+** | Official plugin by [Gramps](https://godotsteam.com/). Must be installed and enabled in your project. |
+| **Steam client** | Must be running on the player's machine before the game starts. |
+| **Valid Steam App ID** | Use `480` (Spacewar) for local testing. Use your real App ID in production. |
+| **Separate Steam accounts** | Two instances with the **same Steam account** on the same machine cannot connect via P2P — this is a Steam limitation. |
+
+## Install GodotSteam
+
+1. Download **GodotSteam GDExtension 4.4+** from [godotsteam.com](https://godotsteam.com/).
+2. Copy the addon folder into your project under `res://addons/godotsteam/`.
+3. Enable the plugin in **Project → Project Settings → Plugins**.
+4. Set `initialization/initialize_on_startup = false` in the `[steam]` section of `project.godot` — LinkUx handles initialization itself.
+
+> GodotSteam registers the `Steam` global class and `SteamMultiplayerPeer` node automatically.
+
+## Initialize Steam
+
+Call `LinkUx.initialize_steam(app_id)` **once at startup**, before calling `LinkUx.initialize()`:
+
+```gdscript
+# GLOBAL.gd — Your game autoload
+extends Node
+
+func _ready() -> void:
+    # initialize_steam() is safe to call even if Steam is not running.
+    # It returns false and LinkUx continues without the Steam backend.
+    LinkUx.initialize_steam(480)   # 480 = Spacewar for testing
+
+    _init_linkux()
+    LinkUx.scene_load_requested.connect(_on_scene_load_requested)
+    LinkUx.session_closed.connect(_on_session_closed)
+
+func _init_linkux() -> void:
+    if LinkUx.get_config() != null:
+        return
+    var config := LinkUxConfig.new()
+    config.network = NetworkConfig.new()
+    config.network.tick_rate = 30
+
+    config.steam = SteamBackendConfig.new()
+    config.steam.connection_timeout = 10.0
+
+    LinkUx.initialize(config)
+```
+
+`initialize_steam()` does three things automatically:
+1. Creates `steam_appid.txt` in the correct path (project root in editor, executable directory in exports).
+2. Calls GodotSteam's `steamInitEx(false, app_id)` to start the Steam SDK.
+3. Sets `is_steam_initialized()` to `true` on success.
+
+## Host an online session
+
+```gdscript
+func _on_online_host_pressed() -> void:
+    if not LinkUx.is_steam_initialized():
+        show_error("Steam is not running.")
+        return
+    LinkUx.set_local_player_name(LinkUx.get_steam_user())
+    LinkUx.set_backend(NetworkEnums.BackendType.STEAM)
+    LinkUx.create_session(LinkUx.get_steam_user() + "'s Room", 8, {})
+```
+
+After `session_started`, read the **6-character room code** and display it:
+
+```gdscript
+func _on_session_started() -> void:
+    var code := LinkUx.get_room_code()   # e.g. "K7PQ3A"
+    $CodeLabel.text = "Room code: " + code
+    if LinkUx.is_host():
+        LinkUx.request_scene_load("res://scenes/level.tscn")
+```
+
+## Join an online session
+
+```gdscript
+func _on_online_join_pressed() -> void:
+    if not LinkUx.is_steam_initialized():
+        show_error("Steam is not running.")
+        return
+    var code := $CodeInput.text.strip_edges().to_upper()
+    if code.length() != 6:
+        show_error("Steam room codes are 6 characters.")
+        return
+    LinkUx.set_local_player_name(LinkUx.get_steam_user())
+    LinkUx.set_backend(NetworkEnums.BackendType.STEAM)
+    var err := LinkUx.join_session_by_room_code(code)
+    if err != NetworkEnums.ErrorCode.SUCCESS:
+        show_error("Invalid code format.")
+```
+
+## Room codes — LAN vs Steam
+
+| Backend | Format | Length | Encodes |
+|---------|--------|--------|---------|
+| **LAN** | Hexadecimal | 8 chars | Host IP + ENet port |
+| **Steam** | Alphanumeric (A–Z, 0–9) | 6 chars | Steam Lobby metadata |
+
+6 chars × 36 symbols = **~2.2 billion** unique combinations.
+
+## How it works internally
+
+```
+HOST
+  1. set_backend(STEAM) + create_session()
+  2. LinkUx calls Steam.createLobby(PUBLIC, max_players)
+  3. On lobby_created:
+     → generates 6-char random room code
+     → stores code as Steam lobby metadata (key: "linkux_room_code")
+     → creates SteamMultiplayerPeer.create_host(0)
+     → emits session_started
+
+CLIENT
+  1. set_backend(STEAM) + join_session_by_room_code("K7PQ3A")
+  2. LinkUx calls Steam.addRequestLobbyListStringFilter("linkux_room_code", "K7PQ3A")
+     → Steam.requestLobbyList()
+  3. On lobby_match_list: calls Steam.joinLobby(lobbies[0])
+  4. On lobby_joined:
+     → gets host Steam ID via Steam.getLobbyOwner()
+     → creates SteamMultiplayerPeer.create_client(host_steam_id, 0)
+     → emits session_started
 ```
 
 ## Check the active backend
 
 ```gdscript
-if LinkUx.is_lan():
-    print("Using LAN backend")
+if LinkUx.is_online():
+    print("Using Steam backend")
 
-// Or with the name:
-print(LinkUx.get_backend_name())  // "LAN"
+print(LinkUx.get_backend_name())  # "Steam"
 ```
+
+## Steam-related API functions
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `initialize_steam(app_id)` | `bool` | Initializes GodotSteam. Returns `true` on success. |
+| `is_steam_initialized()` | `bool` | Whether Steam was successfully initialized. |
+| `get_steam_user()` | `String` | Local Steam display name, or `"Player"` if unavailable. |
+| `is_online()` | `bool` | `true` if the active backend is Steam. |
+| `get_version()` | `String` | Current addon version string (e.g. `"2.1.0"`). |
+
+## Limitations
+
+- **Same machine, same account**: Two game instances sharing the same Steam account cannot connect to each other via Steam P2P. Use separate Steam accounts for same-machine testing.
+- **Steam client required**: If Steam is not running, `initialize_steam()` returns `false` and the STEAM backend is unavailable.
+- **Internet required for lobby search**: Steam Lobby discovery requires an internet connection. Actual game traffic may use Steam Relay if direct P2P is unavailable.
+- **`multiplayer_poll` is disabled**: Same as the LAN backend, LinkUx disables `SceneTree.multiplayer_poll` when the Steam backend is active. This is transparent.
 
 ---
 
-<!-- doc-shell:page slug="backends-proximos" -->
+<!-- doc-shell:page slug="backends" -->
 
-# Upcoming Backends
+# Backends
 
 LinkUx is designed from the ground up to support multiple backends. The `NetworkBackend` base class defines the interface any backend must implement, and the rest of the system (API, subsystems, nodes) is completely transport-agnostic.
 
 ## Current status
 
-| Backend | Status | Notes |
-|---------|--------|-------|
-| **LAN (ENet)** | ✅ Available | Local network, direct connection. |
-| **Online — Relay** | 🔜 Planned | Relay server for internet play without port forwarding. |
-| **Online — EOS / Services** | 🔜 Planned | Integration with cloud matchmaking services. |
+| Backend | Status | Transport | Room code |
+|---------|--------|-----------|-----------|
+| **LAN (ENet)** | ✅ Available | ENetMultiplayerPeer | 8-char hex |
+| **Steam Online** | ✅ Available | SteamMultiplayerPeer | 6-char alphanumeric |
 
 ## Switch backends without touching game code
 
-This is LinkUx's core promise. When Online backends become available, the only change needed in your game will be:
+This is LinkUx's core promise. Your signals, RPCs, Spawner, and Synchronizer work identically regardless of the active backend. The only change when switching is:
 
 ```gdscript
-# Today (LAN):
+# LAN session:
 LinkUx.set_backend(NetworkEnums.BackendType.LAN)
+LinkUx.create_session("Room", 4)
 
-# Tomorrow (Online):
-LinkUx.set_backend(NetworkEnums.BackendType.ONLINE_RELAY)  # coming soon
+# Steam Online session (same API, different backend):
+LinkUx.set_backend(NetworkEnums.BackendType.STEAM)
+LinkUx.create_session("Room", 8)
 ```
-
-**The rest of your code — signals, RPCs, Spawner, Synchronizer — doesn't change.**
 
 ## How a backend is integrated
 
-Each backend is a script extending `NetworkBackend` that implements methods like `_backend_create_server()`, `_backend_connect()`, `_backend_kick_peer()`, etc. LinkUx detects backend capabilities via `BackendCapabilityChecker` and warns if any are missing.
+Each backend is a script extending `NetworkBackend` that implements methods like `_backend_create_session()`, `_backend_join_session_by_room_code()`, `_backend_kick_peer()`, etc. LinkUx detects backend capabilities via `BackendCapabilityChecker`.
 
-To add support for a new backend in the future, you only need to:
+To add support for a new backend in the future:
 1. Create the backend script under `addons/linkux/backends/your_backend/`.
-2. Add the corresponding case to the `BackendType` enum.
+2. Add the corresponding case to the `BackendType` enum in `network_enums.gd`.
 3. Register the backend in `set_backend()` inside `linkux.gd`.
 
 ---
@@ -1603,14 +1489,14 @@ To add support for a new backend in the future, you only need to:
 
 # Full Example
 
-A minimal but fully functional multiplayer game using LinkUx. Includes menu, synchronized scene loading, player spawning and basic first-person movement.
+A minimal but fully functional multiplayer game using LinkUx. Includes menu with LAN and Steam Online, synchronized scene loading, player spawning and basic first-person movement.
 
 ## Project structure
 
 ```
 project/
 ├── autoloads/
-│   └── GLOBAL.gd          ← Autoload: initializes LinkUx
+│   └── GLOBAL.gd          ← Autoload: initializes LinkUx + Steam
 ├── scenes/
 │   ├── menu.tscn           ← Main menu
 │   ├── level.tscn          ← Multiplayer level
@@ -1630,7 +1516,9 @@ project/
 extends Node
 
 func _ready() -> void:
-    await get_tree().process_frame
+    # Initialize Steam (safe to call even if Steam is not running)
+    LinkUx.initialize_steam(480)
+
     _init_linkux()
     LinkUx.scene_load_requested.connect(_on_scene_load_requested)
     LinkUx.session_closed.connect(_on_session_closed)
@@ -1641,6 +1529,7 @@ func _init_linkux() -> void:
     var config := LinkUxConfig.new()
     config.network = NetworkConfig.new()
     config.network.tick_rate = 30
+    config.steam = SteamBackendConfig.new()
     config.log_level = 3
     LinkUx.initialize(config)
 
@@ -1659,30 +1548,51 @@ func _on_session_closed() -> void:
 # scripts/menu.gd
 extends Control
 
+const DEFAULT_MAX_PLAYERS := 8
+
 func _ready() -> void:
     LinkUx.prepare_for_new_session()
     LinkUx.session_started.connect(_on_session_started)
     LinkUx.connection_failed.connect(_on_connection_failed)
 
-func _on_host_btn_pressed() -> void:
+# ─── LAN ────────────────────────────────────────────────────
+func _on_lan_host_pressed() -> void:
     var nickname: String = $NicknameInput.text.strip_edges()
-    if nickname.is_empty():
-        return
+    if nickname.is_empty(): return
     LinkUx.set_local_player_name(nickname)
     LinkUx.set_backend(NetworkEnums.BackendType.LAN)
-    LinkUx.create_session("Room of " + nickname, 4)
+    LinkUx.create_session("Room of " + nickname, DEFAULT_MAX_PLAYERS)
 
-func _on_join_btn_pressed() -> void:
+func _on_lan_join_pressed() -> void:
     var nickname: String = $NicknameInput.text.strip_edges()
     var code: String     = $CodeInput.text.strip_edges().to_upper()
-    if nickname.is_empty() or code.is_empty():
-        return
+    if nickname.is_empty() or code.is_empty(): return
     LinkUx.set_local_player_name(nickname)
     LinkUx.set_backend(NetworkEnums.BackendType.LAN)
     var err := LinkUx.join_session_by_room_code(code)
     if err != NetworkEnums.ErrorCode.SUCCESS:
         $StatusLabel.text = "Room not found (invalid code)"
 
+# ─── Steam Online ────────────────────────────────────────────
+func _on_online_host_pressed() -> void:
+    if not LinkUx.is_steam_initialized():
+        $StatusLabel.text = "Steam is not running."; return
+    LinkUx.set_local_player_name(LinkUx.get_steam_user())
+    LinkUx.set_backend(NetworkEnums.BackendType.STEAM)
+    LinkUx.create_session(LinkUx.get_steam_user() + "'s Room", DEFAULT_MAX_PLAYERS)
+
+func _on_online_join_pressed() -> void:
+    if not LinkUx.is_steam_initialized():
+        $StatusLabel.text = "Steam is not running."; return
+    var code: String = $CodeInput.text.strip_edges().to_upper()
+    if code.is_empty(): return
+    LinkUx.set_local_player_name(LinkUx.get_steam_user())
+    LinkUx.set_backend(NetworkEnums.BackendType.STEAM)
+    var err := LinkUx.join_session_by_room_code(code)
+    if err != NetworkEnums.ErrorCode.SUCCESS:
+        $StatusLabel.text = "Invalid code format."
+
+# ─── Common ──────────────────────────────────────────────────
 func _on_session_started() -> void:
     $CodeLabel.text = "Code: " + LinkUx.get_room_code()
     if LinkUx.is_host():
@@ -1706,15 +1616,12 @@ func _ready() -> void:
     LinkUx.player_joined.connect(_on_player_joined)
     LinkUx.player_left_processed.connect(_on_player_left)
 
-    # Spawn local player
     _spawn_player(LinkUx.get_local_peer_id())
-
-    # Notify that this peer finished loading
     LinkUx.report_scene_ready()
 
 func _on_player_joined(info: PlayerInfo) -> void:
     if info.peer_id == LinkUx.get_local_peer_id():
-        return  # Already spawned in _ready
+        return
     _spawn_player(info.peer_id)
 
 func _on_player_left(_info: PlayerInfo, _reason: int) -> void:
@@ -1722,15 +1629,11 @@ func _on_player_left(_info: PlayerInfo, _reason: int) -> void:
 
 func _spawn_player(peer_id: int) -> void:
     var pos := Vector3(randf_range(-3.0, 3.0), 1.0, randf_range(-3.0, 3.0))
-    var nickname := "?"
     var p := LinkUx.get_player_info(peer_id)
-    if p:
-        nickname = p.display_name
-
     spawner.spawn(0, {
-        "player_peer_id": peer_id,
-        "player_nickname": nickname,
-        "global_position": pos,
+        "player_peer_id":   peer_id,
+        "player_nickname":  p.display_name if p else "?",
+        "global_position":  pos,
     }, peer_id)
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -1756,7 +1659,6 @@ func _ready() -> void:
     if not LinkUx.is_local_player_id(player_peer_id):
         set_process_unhandled_input(false)
         return
-    # Local player only
     $Camera3D.current = true
     Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -1785,7 +1687,7 @@ func _physics_process(_delta: float) -> void:
 
 ---
 
-## player.tscn — Player scene tree
+## Scene trees
 
 ```
 CharacterBody3D  (player.gd)
@@ -1793,14 +1695,10 @@ CharacterBody3D  (player.gd)
 ├── MeshInstance3D
 ├── Camera3D
 └── LinkUxSynchronizer
-    sync_properties:      ["position", "rotation"]
-    interpolate:          true
-    remote_smoothing_hz:  24.0
+    sync_properties:     ["position", "rotation"]
+    interpolate:         true
+    remote_smoothing_hz: 24.0
 ```
-
----
-
-## level.tscn — Level scene tree
 
 ```
 Node3D  (level.gd)
@@ -1818,7 +1716,7 @@ Node3D  (level.gd)
 ## Complete flow
 
 ```
-1. Player A → create_session()  →  [session_started]
+1. Player A → create_session() (LAN or Steam)  →  [session_started]
    └── request_scene_load("level.tscn")
    └── [scene_load_requested] → GLOBAL loads the scene
 
