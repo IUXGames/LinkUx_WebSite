@@ -3,7 +3,7 @@
 # Introducción
 
 [![Godot 4](https://img.shields.io/badge/Godot-4.4+-478cbf?logo=godotengine&logoColor=white)](https://godotengine.org/)
-[![Version](https://img.shields.io/badge/version-2.1.0-8435c4)](./plugin.cfg)
+[![Version](https://img.shields.io/badge/version-2.1.2-8435c4)](./plugin.cfg)
 
 **LinkUx** es un addon de multijugador para **Godot 4** que unifica redes LAN y Online bajo una única API de alto nivel. En lugar de programar directamente contra ENet, Steam o cualquier servicio externo, tu código de juego solo habla con LinkUx — y LinkUx se encarga del resto.
 
@@ -11,7 +11,7 @@
 
 | Información | Valor |
 |-------------|--------|
-| **Versión del addon** | **2.1.0** (campo `version` en `addons/linkux/plugin.cfg`) |
+| **Versión del addon** | **2.1.2** (campo `version` en `addons/linkux/plugin.cfg`) |
 | **Godot para el que está diseñado** | **Godot 4.4+** |
 | **Protocolo de red interno** | Número entero expuesto por `LinkUx.get_protocol_version()` (ver `addons/linkux/core/protocol_version.gd`) |
 | **Versión del addon (string)** | `LinkUx.get_version()` — lee de `plugin.cfg` dinámicamente |
@@ -1115,7 +1115,7 @@ Referencia completa de todos los métodos públicos del Autoload `LinkUx`.
 | `get_steam_user()` | `String` | Nombre Steam del jugador local, o `"Player"` si no está disponible. |
 | `set_backend(backend_type)` | `void` | Activa el backend especificado. |
 | `get_config()` | `LinkUxConfig` | Config activa (`null` si no inicializado). |
-| `get_version()` | `String` | Versión del addon leída de `plugin.cfg` (ej. `"2.1.0"`). |
+| `get_version()` | `String` | Versión del addon leída de `plugin.cfg` (ej. `"2.1.2"`). |
 | `get_protocol_version()` | `int` | Versión del protocolo interno de red (entero). |
 | `get_backend_type()` | `int` | Tipo de backend activo (`NetworkEnums.BackendType`). |
 | `get_backend_name()` | `String` | Nombre legible del backend activo (`"LAN"` o `"Steam"`). |
@@ -1529,7 +1529,7 @@ print(LinkUx.get_backend_name())  # "Steam"
 | `is_steam_initialized()` | `bool` | Si Steam fue inicializado correctamente. |
 | `get_steam_user()` | `String` | Nombre Steam del jugador local, o `"Player"` si no disponible. |
 | `is_online()` | `bool` | `true` si el backend activo es Steam. |
-| `get_version()` | `String` | Versión actual del addon (ej. `"2.1.0"`). |
+| `get_version()` | `String` | Versión actual del addon (ej. `"2.1.2"`). |
 
 ## Limitaciones
 
